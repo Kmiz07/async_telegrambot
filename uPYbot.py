@@ -30,13 +30,13 @@ class uBot():
         self.funcion = funcion
         self.id_update = 0
         self.usock = self.usock_ssl()
-        print(self.usock)
+        #print(self.usock)
         self.timeout = 50
         self.limit = 1
         self.puntero_tiempo = utime.time()
         self.resetear = False
 
-    def send_message(self,id_canal,mensaje):
+    async def send_message(self,id_canal,mensaje):
 #         envia mensaje de texto al canal/usuario elegido
         peticion = b'GET /bot%s/sendMessage?chat_id=%s&parse_mode=HTML&text=%s HTTP/1.1\r\nHost: api.telegram.org\r\n\r\n' %(self.token, id_canal, mensaje)      
         self.usock.write(peticion)
@@ -80,11 +80,11 @@ class uBot():
                     gc.collect()
                     self.puntero_tiempo = utime.time()#marca tiempo de peticion para comprobar correcto timeout
                     peticion = b"GET /bot%s/getUpdates?offset=%s&timeout=%s&limit=%s  HTTP/1.1\r\nHost: api.telegram.org\r\n\r\n" %(self.token, str(self.id_update), str(self.timeout), str(self.limit))                       
-                    print(peticion)
+                    #print(peticion)
                     self.usock.write(peticion)
                     esperando_update=True#Ahora si esta esperando update
                 except OSError as exc:
-                    print(exc.args[0])
+                    print(f'error en inicia: {exc.args[0]}')
                     print('error enviando peticion')
                     self.usock = self.usock_ssl()
                     esperando_update = False
@@ -103,9 +103,9 @@ class uBot():
                 #print(f'bufer:{bufer}')
                 if bufer != b'':
                     mensaje_util = self.procesa_entrada(bufer)
-                    print('-------------------respuesta------------------------',utime.time())
-                    print(mensaje_util)
-                    print('--------------------------------------------------')
+#                     print('-------------------respuesta------------------------',utime.time())
+                    print(f'\n{mensaje_util}\n')
+#                     print('--------------------------------------------------')
                     bufer = mensaje_util
             except OSError as exc:
                 print('error recibiendo datos')
@@ -118,8 +118,7 @@ class uBot():
                     retorno.vacio = True
                 esperando_update= False
                 if retorno.vacio == False:
-                    print(retorno.vacio)
-                    print(retorno.indice)
+                    print(f'retorno vacio. ID: {retorno.indice}')
                     if retorno.indice != 0:
                         self.id_update = retorno.indice + self.limit
                     asyncio.create_task(self.funcion(retorno, self))#llama al evento de recepcion de datos
@@ -130,44 +129,63 @@ class uBot():
             await asyncio.sleep(0)
 
             
-    class mensaje():
-        ok = False
-        vacio = True 
-        indice = 0
-        remite = '' 
-        remite_id = 0
-        texto = ''
-        chat_id = 0
-        chat_titulo = ''        
-        tipo = ''
-        tiempo = 0
-    def obj_msg(self,z):
-        mensaje = self.mensaje()       
-        if z['ok']:
-            mensaje.ok = True
-            try:
-                if z['result'] != []:
+    
+    def obj_msg(self,x):
+        #print(f'mensaje: {x}')
+        class Mensaje():
+            ok = False
+            vacio = True 
+            indice = 0
+            remite = '' 
+            remite_id = 0
+            isBot = False
+            mensaje_id = 0
+            texto = ''
+            chat_id = 0
+            chat_titulo = ''        
+            tipo = ''
+            tiempo = 0
+        mensaje=Mensaje()
+        try:
+            mensaje.ok = x['ok']
+            resultado=x['result']
+            if isinstance(x['result'],list):
+                if resultado != []:
                     mensaje.vacio = False
-                    mensaje.indice = z['result'][0]['update_id']
-                    mensaje.remite = z['result'][0]['message']['from']['username']
-                    mensaje.remite_id = z['result'][0]['message']['from']['id']
-                    mensaje.texto = z['result'][0]['message']['text']
-                    mensaje.chat_id = z['result'][0]['message']['chat']['id']
-                    mensaje.tipo = z['result'][0]['message']['chat']['type']
-                    mensaje.tiempo = z['result'][0]['message']['date']
-                    if z['result'][0]['message']['chat']['type'] == 'supergroup':
-                        mensaje.chat_titulo = z['result'][0]['message']['chat']['title']
-                    else:
-                        mensaje.chat_titulo = ''
-                
-                    if 'update_id' in z['result'][0] == False: mensaje.vacio = True
-                        
+                    resultado = x['result'][0]
+                    mensaje.indice = resultado['update_id']
+                    if 'message' in resultado.keys():
+                        resultado = resultado['message']
+                        mensaje.remite = resultado['from']['username']
+                        mensaje.remite_id = resultado['from']['id']
+                        mensaje.isBot = resultado['from']['is_bot']
+                    if 'channel_post' in resultado.keys():
+                        resultado = resultado['channel_post']
+                        mensaje.remite = resultado['sender_chat']['title']
+                        mensaje.remite_id = resultado['sender_chat']['id']
+                        mensaje.isBot = False
+                    mensaje.mensaje_id = resultado['message_id']
+                    mensaje.texto = resultado['text']
+                    mensaje.tipo = resultado['chat']['type']
+                    mensaje.tiempo = resultado['date']
+                    mensaje.chat_id = resultado['chat']['id']
+                    if mensaje.tipo == 'private' or mensaje.tipo =='bot_command':
+                        mensaje.chat_titulo = resultado['chat']['username']
+                    if mensaje.tipo == 'supergroup' or mensaje.tipo == 'group':
+                        mensaje.chat_titulo = resultado['chat']['title']
                 else:
-                    mensaje.vacio = True
-            except:
-                pass
-        else:
-            mensaje.ok = False
+                    mensaje.vacio=True
+            else:#estos son mis envios
+                mensaje.mensaje_id = resultado['message_id']
+                mensaje.tipo = 'enviado'
+                mensaje.texto = resultado['text']
+                if mensaje.tipo == 'private' or mensaje.tipo =='bot_command':
+                        mensaje.chat_titulo = resultado['chat']['username']
+                if mensaje.tipo == 'supergroup' or mensaje.tipo == 'group':
+                        mensaje.chat_titulo = resultado['chat']['title']
+        except:
+            print('problema con json')
+            pass
         return mensaje
 
     async def envia_archivo_multipart(self,canal_id,arch,comando,nombre,comentario=''):

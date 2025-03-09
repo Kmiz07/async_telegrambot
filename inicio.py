@@ -9,7 +9,7 @@ wifi.active(True)
 wifi.connect(red, clave)
 inicio_wifi=utime.time()
 while wifi.isconnected() == False:
-    if utime.time()-15 > inicio_wifi: break 
+    if utime.time()-15 > inicio_wifi: break
 if wifi.isconnected():
     print('conectado')
     asyncio.run(conexion.main())
