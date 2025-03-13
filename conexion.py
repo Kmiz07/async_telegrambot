@@ -10,7 +10,7 @@ import asyncio
 configuracion=confjson.recupera()  
 continua=True
 async def evento_recepcion(datos_recibidos, miBot):
-    print(f'Datos recibidos: {datos_recibidos}\n')
+#         Si dattos_recibidos es None en archivo deberia haber el contenido de un archivo
 #     pass
 #         Esta funcion funciona como un evento de recepcion de get_updates.
 #         En datos_recibidos, recibimos un objeto mensaje con la siguiente estructura:
@@ -25,10 +25,14 @@ async def evento_recepcion(datos_recibidos, miBot):
 #         tipo = sera private si es mensaje privado o supergroup si viene de un canal
 #         tiempo = puntero del tiempo del momento de la creacion del mensaje. esta definido desde el 1 de 1 de 2000, normalmente marcara 30 años mas
 #         en miBot nos llega una referencia al bot creado.
-    print(f'recibido->  {datos_recibidos.texto}<<<')
-    if datos_recibidos.texto == 'getID':
-        await miBot.send_message(datos_recibidos.remite_id,f'El id del canal {datos_recibidos.chat_titulo} es {datos_recibidos.chat_id}')
-   
+    if datos_recibidos:
+        print(f'recibido->  {datos_recibidos.texto}<<<')
+        print(f'esArchivo = {datos_recibidos.esArchivo}')
+        if datos_recibidos.esArchivo:
+            print(f' el archivo es:\n{datos_recibidos.cont_archivo}')
+        elif datos_recibidos.texto == 'getID':
+            await miBot.send_message(datos_recibidos.remite_id,f'El id del canal {datos_recibidos.chat_titulo} es {datos_recibidos.chat_id}')
+    
 
     
     

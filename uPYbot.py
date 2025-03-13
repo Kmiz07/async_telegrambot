@@ -7,7 +7,21 @@ import uos,asyncio
 class uBot():
     def chip_reset(self):
         self.resetear=True
-            
+    class Mensaje():
+            esArchivo = False
+            cont_archivo = None
+            ok = False
+            vacio = True 
+            indice = 0
+            remite = '' 
+            remite_id = 0
+            isBot = False
+            mensaje_id = 0
+            texto = ''
+            chat_id = 0
+            chat_titulo = ''        
+            tipo = ''
+            tiempo = 0        
     def usock_ssl(self):
 #         inicia un socket ssl. si todo va bien retorna el socket, sino retorna None
         if network.WLAN(network.STA_IF).isconnected():
@@ -35,6 +49,14 @@ class uBot():
         self.limit = 1
         self.puntero_tiempo = utime.time()
         self.resetear = False
+    async def busca_archivo(self,id_archivo):
+        peticion=b'GET /bot%s/getFile?file_id=%s HTTP/1.1\r\nHost: api.telegram.org\r\n\r\n'%(self.token, id_archivo)
+        self.usock.write(peticion)
+    async def pide_archivo(self,path):
+        
+        peticion = b'GET /file/bot%s/%s HTTP/1.1\r\nHost: api.telegram.org\r\n\r\n'%(self.token, path)
+        print(peticion)
+        self.usock.write(peticion)
 
     async def send_message(self,id_canal,mensaje):
 #         envia mensaje de texto al canal/usuario elegido
@@ -50,12 +72,15 @@ class uBot():
     def procesa_entrada(self,bufer_de_entrada):
 #         procesa la cabecera y retorna el json de la respuesta de servidor
         #print(bufer_de_entrada)
+        Archivo = False
         lineas=bufer_de_entrada.decode().split('\n')
         #print(lineas)
         fin_cabecera =0 #para asegurar que fue el fin de cabecera
         for linea in lineas:
             partes_de_linea = linea.split(' ')
             #print(f'---->{partes_de_linea}')
+            if partes_de_linea[0] == 'ETag:':
+                Archivo = True
             if partes_de_linea[0] == 'HTTP/1.1':
                 codigo_pagina = partes_de_linea[1]
                 #print('codigo pagina = ',codigo_pagina)
@@ -67,7 +92,12 @@ class uBot():
                 fin_cabecera +=1
                 if fin_cabecera == 1:
 #                     retorna la informacion interesante para el bot(el json del mensaje)
-                    return self.usock.read(longitud_respuesta)
+                    contenido = self.usock.read(longitud_respuesta)
+                    if Archivo:
+                        #print('------------------------------es archivo---------------------------------------')
+                        contenido=b'#'+contenido
+                        Archivo = False
+                    return contenido
             else:
                 fin_cabecera = 0
                 
@@ -103,10 +133,19 @@ class uBot():
                 #print(f'bufer:{bufer}')
                 if bufer != b'':
                     mensaje_util = self.procesa_entrada(bufer)
+                    if mensaje_util.decode()[0] == '#':
+                        mensaje_util = mensaje_util[1:]
+                        #print(f'contenido de archivo: {mensaje_util}')#enviar a evento
+                        arch_obj=self.Mensaje()
+                        arch_obj.esArchivo = True
+                        arch_obj.cont_archivo = mensaje_util
+                        asyncio.create_task(self.funcion(arch_obj, self))
+                        bufer=b''
 #                     print('-------------------respuesta------------------------',utime.time())
-                    print(f'\n{mensaje_util}\n')
+                    #print(f'\n{mensaje_util}\n')
 #                     print('--------------------------------------------------')
-                    bufer = mensaje_util
+                    else:
+                        bufer = mensaje_util
             except OSError as exc:
                 print('error recibiendo datos')
                 machine.reset()            
@@ -131,21 +170,9 @@ class uBot():
             
     
     def obj_msg(self,x):
-        #print(f'mensaje: {x}')
-        class Mensaje():
-            ok = False
-            vacio = True 
-            indice = 0
-            remite = '' 
-            remite_id = 0
-            isBot = False
-            mensaje_id = 0
-            texto = ''
-            chat_id = 0
-            chat_titulo = ''        
-            tipo = ''
-            tiempo = 0
-        mensaje=Mensaje()
+        print(f'mensaje: {x}')
+        
+        mensaje=self.Mensaje()
         try:
             mensaje.ok = x['ok']
             resultado=x['result']
@@ -165,7 +192,11 @@ class uBot():
                         mensaje.remite_id = resultado['sender_chat']['id']
                         mensaje.isBot = False
                     mensaje.mensaje_id = resultado['message_id']
-                    mensaje.texto = resultado['text']
+                    if 'text' in resultado.keys():
+                        mensaje.texto = resultado['text']
+                    if 'document' in resultado.keys():
+                        mensaje.texto = resultado['document']['file_id']
+                        asyncio.create_task(self.busca_archivo(mensaje.texto))
                     mensaje.tipo = resultado['chat']['type']
                     mensaje.tiempo = resultado['date']
                     mensaje.chat_id = resultado['chat']['id']
@@ -175,14 +206,17 @@ class uBot():
                         mensaje.chat_titulo = resultado['chat']['title']
                 else:
                     mensaje.vacio=True
-            else:#estos son mis envios
-                mensaje.mensaje_id = resultado['message_id']
-                mensaje.tipo = 'enviado'
-                mensaje.texto = resultado['text']
-                if mensaje.tipo == 'private' or mensaje.tipo =='bot_command':
-                        mensaje.chat_titulo = resultado['chat']['username']
-                if mensaje.tipo == 'supergroup' or mensaje.tipo == 'group':
-                        mensaje.chat_titulo = resultado['chat']['title']
+            else:#estos son mis envios o recepcion de archivos
+                if 'file_path' in resultado.keys():
+                    asyncio.create_task(self.pide_archivo(resultado['file_path']))
+                else:    
+                    mensaje.mensaje_id = resultado['message_id']
+                    mensaje.tipo = 'enviado'
+                    mensaje.texto = resultado['text']
+                    if mensaje.tipo == 'private' or mensaje.tipo =='bot_command':
+                            mensaje.chat_titulo = resultado['chat']['username']
+                    if mensaje.tipo == 'supergroup' or mensaje.tipo == 'group':
+                            mensaje.chat_titulo = resultado['chat']['title']
         except:
             print('problema con json')
             pass
